@@ -1,0 +1,137 @@
+#include <iostream>
+#include <string>
+#include <vector>
+#include "teamstyle18-my-1.h"
+#include "Move.h"
+#include <cmath>
+static int turn(0);
+static Unit *caim(NULL);//追击目标
+void Playmain()
+{
+    ++turn;
+    int Id=getTeamId()?1:0;
+    int unitSize=getUnitSize();
+    Unit *all_unit=getUnit();
+    static int isfirst = 1;
+    //这里的地图数组储存所有建筑物id,在接口中是静态变量，以后可以单独直接写进一个函数
+    //使得map是一个全局变量，仅在第一回合开始之前调用一次
+    static int map[101][101];
+    if (isfirst)
+    {
+        memset(map, 0, 101 * 101);
+        for (int i = 0; i < 52; i++)
+            map[all_unit[i].position.x][all_unit[i].position.y] = all_unit[i].type_name;
+        isfirst = 0;
+    }
+    vector<Unit*> BOLT_v;
+    vector<Unit*> ELEC_v;
+    vector<Unit*>::iterator iter1,iter2;
+    for(int i=0;i<unitSize;i++)
+    {
+        if(all_unit[i].flag!=Id)
+            continue;
+        switch (all_unit[i].type_name)
+        {case BOLT_TANK:
+                BOLT_v.push_back(&all_unit[i]);
+                break;
+            case ELEC_LAB:
+                ELEC_v.push_back(&all_unit[i]);
+                break;
+            default:
+                break;
+        }
+    }
+    if(!ELEC_v.empty())
+    {
+        for(iter1=ELEC_v.begin();iter1!=ELEC_v.end();++iter1)
+            produce((*iter1)->unit_id);
+    }
+    //判断生产
+    if(!BOLT_v.empty())
+    {
+        for(iter2=BOLT_v.begin();iter2!=BOLT_v.end();++iter2)
+        {
+            //移动
+            //1组建战队
+            //2增加战力
+            //3确定位置
+            Unit *aim(NULL);
+            Position aimpos;
+            int xdel,ydel,xdire,ydire;
+            if(caim==NULL&&(turn - (*iter2)->skill_last_release_time1)>10)
+            {
+                int distance(0);
+                for(int i=0;i<unitSize;i++)
+                {
+                    if(all_unit[i].unit_type!=(VEHICLE||AIRCRAFT))
+                        continue;
+                    int xdel = all_unit[i].position.x - (*iter2)->position.x, ydel = all_unit[i].position.y - (*iter2)->position.y;
+                    if(abs(xdel)+abs(ydel)>distance)
+                    {
+                        aim=&all_unit[i];
+                        distance=abs(xdel)+abs(ydel);
+                    }
+                }
+                if(distance>(*iter2)->shot_range_now)
+                {
+                    int xpos,ypos;
+                    xdel = aim->position.x - (*iter2)->position.x;
+                    ydel = aim->position.y - (*iter2)->position.y;
+                    xdire = ((xdel > 0) ? 1 : -1);
+                    ydire = ((ydel > 0) ? 1 : -1);
+                    //前进距离待考量，此处选射程与速度差为目的地
+                    for(int i(0);i!=((int)(*iter2)->shot_range_now - (*iter2)->max_speed_now+1);++i)
+                    {
+                        xpos=aim->position.x - xdire*i;
+                        ypos=aim->position.y - ydire*((int)(*iter2)->max_speed_now-i);
+                        if(!map[xpos][ypos])
+                            break;
+                    }
+                    aimpos=Position (xpos,ypos);
+                    Unit_Move((*iter2)->unit_id, aimpos);
+                }
+            }
+            //4追击
+            else if(caim!=NULL)
+            {
+                int distance(0);
+                if(distance>(*iter2)->shot_range_now)
+                    Unit_Move((*iter2)->unit_id, caim->position);
+            }
+            //5分散逃避
+            //只是远离最近目标，暂不考虑其他逃离后其他势力的活力范围和是否能躲得过
+            const int least_health(30);//可调整
+            if((*iter2)->health_now<=least_health||(((turn - (*iter2)->skill_last_release_time1)<=10)&&(abs(xdel)+abs(ydel)<=aim->shot_range_now)))
+            {
+                int xpos,ypos;
+                for(int i(0);i!=((int)(*iter2)->max_speed_now+1);++i)
+                {
+                    xpos= (*iter2)->position.x - xdire*i;
+                    ypos=aim->position.y - ydire*((int)(*iter2)->max_speed_now-i);
+                    if(!map[xpos][ypos])
+                        break;
+                }
+                Position depart_aimpos(xpos,ypos);
+                Unit_Move((*iter2)->unit_id, depart_aimpos);
+            }
+            //6混合补充
+            
+            //攻击
+            if((turn - (*iter2)->skill_last_release_time1)>10)
+            {
+                //1评估战力
+                //2选取目标
+                //3判别范围
+                if(abs(xdel)+abs(ydel)<=(*iter2)->shot_range_now)
+                {
+                    //4发动攻击
+                    skill_1((*iter2)->unit_id,aim->unit_id,(*iter2)->position,aim->position);
+                }
+            }
+            //判断追击单位生死
+            if(caim->health_now==0)
+                caim=NULL;
+        }
+    }
+    return;
+}
